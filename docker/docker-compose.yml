@@ -78,6 +78,7 @@ services:
           - hadoop-seed
         networks:
           - streaming-data-internal
+        restart: on-failure
 
     station-consumer:
         build:
