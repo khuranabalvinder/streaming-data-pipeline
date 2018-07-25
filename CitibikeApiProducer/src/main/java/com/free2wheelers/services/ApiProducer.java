@@ -47,15 +47,13 @@ public class ApiProducer {
 
             @Override
             public void onSuccess(SendResult<String, String> result) {
-                logger.info("Success sending message");
+                logger.info("Success sending message to Hello Clare Bear");
             }
 
             @Override
             public void onFailure(Throwable ex) {
                 logger.error("Failure to send message");
             }
-
         });
     }
-
 }
