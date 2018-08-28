@@ -73,6 +73,8 @@ services:
     raw-data-saver:
         build:
             context: ../RawDataSaver
+        volumes:
+          - ~/.ivy2:/root/.ivy2
         depends_on:
           - kafka
           - station-information-producer
@@ -86,6 +88,8 @@ services:
     station-consumer:
         build:
             context: ../StationConsumer
+        volumes:
+          - ~/.ivy2:/root/.ivy2
         depends_on:
           - zookeeper-seed
           - kafka
