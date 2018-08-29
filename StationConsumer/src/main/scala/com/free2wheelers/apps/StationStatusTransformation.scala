@@ -8,6 +8,8 @@ import org.apache.spark.sql.functions.{udf, _}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 import scala.util.parsing.json.JSON
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.sql.functions._
 
 object StationStatusTransformation {
 
@@ -17,11 +19,11 @@ object StationStatusTransformation {
       .select(col("station_status.payload.data.stations") as "stations", col("station_status.payload.last_updated") as "last_updated")
       .select(explode(col("stations")) as "station", col("last_updated"))
       .select(col("station.station_id") as "station_id"
-        ,col("station.num_bikes_available") + col("station.num_ebikes_available") as "bikes_available"
-        ,col("station.num_docks_available") as "docks_available"
-        ,col("station.is_renting") === 1 as "is_renting"
-        ,col("station.is_returning") === 1 as "is_returning"
-        ,col("last_updated"))
+        , col("station.num_bikes_available") + col("station.num_ebikes_available") as "bikes_available"
+        , col("station.num_docks_available") as "docks_available"
+        , col("station.is_renting") === 1 as "is_renting"
+        , col("station.is_returning") === 1 as "is_returning"
+        , col("last_updated"))
   }
 
   case class Station(
@@ -160,5 +162,44 @@ object StationStatusTransformation {
 
     jsonDF.select(explode(toStatusFn(jsonDF("raw_payload"))) as "status")
       .select($"status.*")
+  }
+
+  case class StationStatus(station_id: Integer, bikes_available: String,
+                           docks_available: Double, is_renting: Boolean, is_returning: Boolean,
+                           last_updated: Integer)
+
+  case class StationInformation(station_id: Integer, name: String,
+                                latitude: Double, longitude: Double, last_updated: Integer)
+
+  def informationJson2DF(jsonDF: DataFrame): DataFrame = {
+    jsonDF
+      .select(from_json(col("raw_payload"), StationInformationSchema.schema).as("station_information"))
+      .select(col("station_information.payload.data.stations") as "stations")
+      .select(explode(col("stations")) as "station")
+      .select(
+        col("station.station_id") as "station_id",
+        col("station.name") as "name",
+        col("station.lat") as "latitude",
+        col("station.lon") as "longitude",
+        col("last_updated")
+      )
+  }
+
+  implicit class StatusTransformation(dataset: Dataset[StationStatus]) {
+    def getLatestStatus(implicit spark: SparkSession) = {
+      import spark.implicits._
+      val value = dataset.groupByKey(_.station_id)
+        .reduceGroups((x, y) => if (x.last_updated > y.last_updated) x else y)
+      value.map(row => row._2)
+    }
+  }
+
+  implicit class informationTransformation(dataset: Dataset[StationInformation]) {
+    def getLatestStatus(implicit spark: SparkSession) = {
+      import spark.implicits._
+      val value = dataset.groupByKey(_.station_id)
+        .reduceGroups((x, y) => if (x.last_updated > y.last_updated) x else y)
+      value.map(row => row._2)
+    }
   }
 }

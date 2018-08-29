@@ -1,6 +1,10 @@
 package com.free2wheelers.apps
 
+<<<<<<< HEAD
 import com.free2wheelers.apps.StationStatusTransformation.{informationJson2DF, statusInformationJson2DF}
+=======
+import com.free2wheelers.apps.StationStatusTransformation.{StationInformation, StationStatus, informationJson2DF, statusJson2DF}
+>>>>>>> [@boydfd] make csv unique.
 import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.spark.sql.SparkSession
@@ -46,6 +50,8 @@ object StationApp {
       .load()
       .selectExpr("CAST(value AS STRING) as raw_payload")
       .transform(t => statusInformationJson2DF(t, spark))
+      .as[StationStatus]
+      .getLatestStatus(spark)
       .join(stationInformationDF, "station_id")
       .repartition(1)
       .writeStream
@@ -58,4 +64,5 @@ object StationApp {
       .start()
       .awaitTermination()
   }
+
 }
