@@ -1,15 +1,14 @@
 package com.free2wheelers.apps
 
-<<<<<<< HEAD
 import com.free2wheelers.apps.StationStatusTransformation.{informationJson2DF, statusInformationJson2DF}
-=======
-import com.free2wheelers.apps.StationStatusTransformation.{StationInformation, StationStatus, informationJson2DF, statusJson2DF}
->>>>>>> [@boydfd] make csv unique.
+import com.free2wheelers.apps.StationStatusTransformation.{StationStatus, informationJson2DF, statusJson2DF}
 import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.streaming.OutputMode
 
 object StationApp {
+  class ClassStationAppLog{}
   def main(args: Array[String]): Unit = {
 
     val retryPolicy = new ExponentialBackoffRetry(1000, 3)
@@ -42,6 +41,12 @@ object StationApp {
       .parquet(latestStationInfoLocation)
       .transform(df => informationJson2DF(df, spark))
 
+    import spark.implicits._
+    spark.udf.register("unique_status", new UniqueStatus)
+
+
+
+    val writer = new ForeachCsvWriter(outputLocation)
     val dataframe = spark.readStream
       .format("kafka")
       .option("kafka.bootstrap.servers", kafkaBrokers)
@@ -55,12 +60,8 @@ object StationApp {
       .join(stationInformationDF, "station_id")
       .repartition(1)
       .writeStream
-      .outputMode("append")
-      .format("csv")
-      .option("header", true)
-      .option("truncate", false)
-      .option("checkpointLocation", checkpointLocation)
-      .option("path", outputLocation)
+      .outputMode(OutputMode.Complete)
+      .foreach(writer)
       .start()
       .awaitTermination()
   }

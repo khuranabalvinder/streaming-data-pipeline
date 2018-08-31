@@ -369,7 +369,11 @@ class StationStatusTransformationTest extends FeatureSpec with Matchers with Giv
         (id, 1, 1, false, false, timestamp)
       }
 
-      val status = Array(createStatus(1, 1535511004), createStatus(1, 1535511003))
+      val status = Array(
+        createStatus(1, 1535511004), createStatus(1, 1535511003),
+        createStatus(2, 1535511004), createStatus(2, 1535511003),
+          createStatus(3, 1535511005), createStatus(3, 1535511006)
+      )
 
       val dataFrame = spark.createDataset(status).toDF(
         "station_id", "bikes_available", "docks_available",
@@ -377,9 +381,9 @@ class StationStatusTransformationTest extends FeatureSpec with Matchers with Giv
 
 
       val dataFrameWithLatest = dataFrame.getLatestStatus(spark)
-      dataFrameWithLatest.count() should be(1)
+      dataFrameWithLatest.count() should be(3)
       dataFrameWithLatest.show()
-      dataFrameWithLatest.map(_.last_updated).as[Int].first() should be(1535511004)
+      dataFrameWithLatest.map(_.last_updated).as[Long].first() should be(1535511006)
     }
   }
 }

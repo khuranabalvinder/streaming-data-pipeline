@@ -90,6 +90,8 @@ services:
             context: ../StationConsumer
         volumes:
           - ~/.ivy2:/root/.ivy2
+        ports:
+          - "4000:4000"
         depends_on:
           - zookeeper-seed
           - kafka

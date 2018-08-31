@@ -10,6 +10,7 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 import scala.util.parsing.json.JSON
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 
 object StationStatusTransformation {
 
@@ -31,7 +32,7 @@ object StationStatusTransformation {
                       name: String,
                       latitude: Double,
                       longitude: Double
-                     )
+                    )
 
   val toStation: String => Seq[Station] = raw_payload => {
     val json = JSON.parseFull(raw_payload)
@@ -78,8 +79,8 @@ object StationStatusTransformation {
         Status(
           x("num_bikes_available").asInstanceOf[Double].toInt,
           x("num_docks_available").asInstanceOf[Double].toInt,
-          x("is_renting").asInstanceOf[Double]==1,
-          x("is_returning").asInstanceOf[Double]==1,
+          x("is_renting").asInstanceOf[Double] == 1,
+          x("is_returning").asInstanceOf[Double] == 1,
           lastUpdated,
           x("station_id").asInstanceOf[String]
         )
@@ -97,8 +98,6 @@ object StationStatusTransformation {
         val str = x("timestamp").asInstanceOf[String]
 
 
-
-
         val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss.SSSSSS'Z'")
         dateFormat.setTimeZone(TimeZone.getTimeZone("GMT"))
         val parsedDate = dateFormat.parse(str)
@@ -109,7 +108,7 @@ object StationStatusTransformation {
           x("empty_slots").asInstanceOf[Double].toInt,
           x("extra").asInstanceOf[Map[String, Any]]("renting").asInstanceOf[Double] == 1,
           x("extra").asInstanceOf[Map[String, Any]]("returning").asInstanceOf[Double] == 1,
-          parsedDate.getTime/1000,
+          parsedDate.getTime / 1000,
           x("id").asInstanceOf[String]
         )
       })
@@ -152,7 +151,7 @@ object StationStatusTransformation {
 
     import spark.implicits._
     jsonDF.select(explode(toStationFn(jsonDF("raw_payload"))) as "station")
-        .select($"station.*")
+      .select($"station.*")
   }
 
   def statusInformationJson2DF(jsonDF: DataFrame, spark: SparkSession): DataFrame = {
@@ -164,12 +163,9 @@ object StationStatusTransformation {
       .select($"status.*")
   }
 
-  case class StationStatus(station_id: Integer, bikes_available: String,
+  case class StationStatus(station_id: String, bikes_available: String,
                            docks_available: Double, is_renting: Boolean, is_returning: Boolean,
-                           last_updated: Integer)
-
-  case class StationInformation(station_id: Integer, name: String,
-                                latitude: Double, longitude: Double, last_updated: Integer)
+                           last_updated: Long)
 
   def informationJson2DF(jsonDF: DataFrame): DataFrame = {
     jsonDF
@@ -183,23 +179,55 @@ object StationStatusTransformation {
         col("station.lon") as "longitude",
         col("last_updated")
       )
+
+  }
+
+  implicit class StatusTransformationDF(dataFrame: DataFrame) {
+    def convertTimestamp(implicit spark: SparkSession) = {
+      import spark.implicits._
+      dataFrame.withColumn("timestamp", to_timestamp(from_unixtime($"last_updated")))
+    }
+
+    def getLatestStatusDF(implicit spark: SparkSession) = {
+      import spark.implicits._
+
+      val uniqueStatus = new UniqueStatus
+
+      dataFrame
+        .withWatermark("timestamp", "10 seconds")
+        .groupBy(
+          window($"timestamp", "10 seconds"),
+          $"station_id")
+        .agg(uniqueStatus(
+          $"station_id",
+          $"bikes_available",
+          $"docks_available",
+          $"is_renting",
+          $"is_returning",
+          $"last_updated") as "status")
+        .select($"status.*")
+        .as[StationStatus]
+    }
   }
 
   implicit class StatusTransformation(dataset: Dataset[StationStatus]) {
-    def getLatestStatus(implicit spark: SparkSession) = {
+    def getLatestStatus(implicit spark: SparkSession): Dataset[StationStatus] = {
       import spark.implicits._
-      val value = dataset.groupByKey(_.station_id)
+      val value = dataset
+        .withWatermark("timestamp", "3 seconds")
+        .groupByKey(_.station_id)
         .reduceGroups((x, y) => if (x.last_updated > y.last_updated) x else y)
       value.map(row => row._2)
+    }
+
+
+    def toString(implicit spark: SparkSession) = {
+      import spark.implicits._
+      dataset.map(_.toString)
+        .withColumn("unique", lit(10))
+        .groupBy("unique")
+        .agg(concat_ws(" ", collect_list("value")) as "texts")
     }
   }
 
-  implicit class informationTransformation(dataset: Dataset[StationInformation]) {
-    def getLatestStatus(implicit spark: SparkSession) = {
-      import spark.implicits._
-      val value = dataset.groupByKey(_.station_id)
-        .reduceGroups((x, y) => if (x.last_updated > y.last_updated) x else y)
-      value.map(row => row._2)
-    }
-  }
 }
