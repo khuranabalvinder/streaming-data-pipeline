@@ -1,7 +1,6 @@
 package com.free2wheelers.apps
 
-import com.free2wheelers.apps.StationStatusTransformation.{informationJson2DF, statusInformationJson2DF}
-import com.free2wheelers.apps.StationStatusTransformation.{StationStatus, informationJson2DF, statusJson2DF}
+import com.free2wheelers.apps.StationStatusTransformation.{StationStatus, informationJson2DF, StatusTransformationDF, statusInformationJson2DF}
 import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.spark.sql.SparkSession
@@ -44,9 +43,6 @@ object StationApp {
     import spark.implicits._
     spark.udf.register("unique_status", new UniqueStatus)
 
-
-
-    val writer = new ForeachCsvWriter(outputLocation)
     val dataframe = spark.readStream
       .format("kafka")
       .option("kafka.bootstrap.servers", kafkaBrokers)
@@ -57,11 +53,14 @@ object StationApp {
       .transform(t => statusInformationJson2DF(t, spark))
       .as[StationStatus]
       .getLatestStatus(spark)
+      .toDF()
       .join(stationInformationDF, "station_id")
       .repartition(1)
       .writeStream
       .outputMode(OutputMode.Complete)
-      .foreach(writer)
+      .option("path", outputLocation)
+      .option("checkpointLocation", "/checkpoint-dir")
+      .format("complete_csv")
       .start()
       .awaitTermination()
   }

@@ -10,6 +10,7 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 import scala.util.parsing.json.JSON
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.TimestampType
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 
 object StationStatusTransformation {
@@ -214,19 +215,9 @@ object StationStatusTransformation {
     def getLatestStatus(implicit spark: SparkSession): Dataset[StationStatus] = {
       import spark.implicits._
       val value = dataset
-        .withWatermark("timestamp", "3 seconds")
         .groupByKey(_.station_id)
         .reduceGroups((x, y) => if (x.last_updated > y.last_updated) x else y)
       value.map(row => row._2)
-    }
-
-
-    def toString(implicit spark: SparkSession) = {
-      import spark.implicits._
-      dataset.map(_.toString)
-        .withColumn("unique", lit(10))
-        .groupBy("unique")
-        .agg(concat_ws(" ", collect_list("value")) as "texts")
     }
   }
 
